@@ -1,0 +1,12 @@
+# Public figures/brands commonly impersonated in crypto-giveaway scams.
+# One name per line, lowercase. Add more as you see them targeted.
+mrbeast
+mr beast
+elon musk
+elonmusk
+jeff bezos
+kim kardashian
+kanye west
+taylor swift
+binance
+coinbase

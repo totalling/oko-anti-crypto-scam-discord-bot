@@ -1,0 +1,6 @@
+# One domain per line. Substring-matched against any URL found in a message.
+# Seeded from observed celebrity-impersonation crypto casino giveaway scams.
+gezowin.com
+fomawin.com
+soakwin.com
+buzawin.com

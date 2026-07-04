@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+
+website/
+
+data/guild_settings.json
+data/pending_reviews.json
+data/scam_hashes.json
