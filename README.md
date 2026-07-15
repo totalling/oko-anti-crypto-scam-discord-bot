@@ -77,7 +77,7 @@ Every detection is logged to your mod channel with the offending message's evide
 **Requirements:** Python 3.10+, and [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) installed on the host (`brew install tesseract` on macOS, `apt install tesseract-ocr` on Debian/Ubuntu).
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/totalling/oko-anti-crypto-scam-discord-bot
 cd oko
 python3 -m venv venv
 source venv/bin/activate
