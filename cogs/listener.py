@@ -5,7 +5,7 @@ from discord.ext import commands
 
 from config import Config
 from detection import pipeline
-from moderation import actions, guild_settings
+from moderation import actions, blacklist, guild_settings
 
 logger = logging.getLogger("scam_bot.listener")
 
@@ -41,6 +41,29 @@ class ScamListener(commands.Cog):
         punishment = await guild_settings.get_honeypot_punishment(message.guild.id)
         punished = await actions.apply_punishment(member, punishment, reason="Triggered honeypot trap channel")
         logger.info("Honeypot triggered: user=%s punishment=%s success=%s", member.id, punishment, punished)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        if not await guild_settings.get_global_blacklist_enabled(member.guild.id):
+            return
+
+        entry = await blacklist.get_entry(member.id)
+        if entry is None:
+            return
+
+        punishment = await guild_settings.get_punishment(member.guild.id)
+        source_guild = self.bot.get_guild(entry["source_guild_id"])
+        source_name = source_guild.name if source_guild else "another server"
+        reason = f"banned in {source_name} for {entry['reason']}"
+        punished = await actions.apply_punishment(member, punishment, reason=f"Global scam blacklist — {reason}"[:512])
+        await actions.log_global_blacklist_action(self.bot, member.guild, member, punishment, punished, reason)
+        logger.info(
+            "Global blacklist hit on join: user=%s guild=%s punishment=%s success=%s",
+            member.id,
+            member.guild.id,
+            punishment,
+            punished,
+        )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

@@ -143,6 +143,26 @@ class ScamAdmin(commands.Cog):
         msg = f"Scam auto-moderation punishment for this server is now **{punishment.name}**."
         await interaction.response.send_message(embed=style.command_reply(interaction, msg), ephemeral=True)
 
+    @scam_group.command(
+        name="globalblacklist",
+        description="If enabled, members banned by Oko in other servers get punished here too",
+    )
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.describe(enabled="Punish members here who've been banned by Oko in another server")
+    async def global_blacklist(self, interaction: discord.Interaction, enabled: bool):
+        if interaction.guild is None:
+            return await interaction.response.send_message(
+                embed=style.command_reply(interaction, "This only works in a server.", emoji="❌"), ephemeral=True
+            )
+        await guild_settings.set_global_blacklist_enabled(interaction.guild.id, enabled)
+        state = "enabled" if enabled else "disabled"
+        msg = (
+            f"Global scam blacklist is now **{state}**. "
+            f"Members banned by Oko in another server will {'now' if enabled else 'no longer'} be "
+            f"punished here (using this server's `/scam setpunishment` setting)."
+        )
+        await interaction.response.send_message(embed=style.command_reply(interaction, msg), ephemeral=True)
+
     @scam_group.command(name="stats", description="Show scam-detection blocklist sizes and this server's settings")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def stats(self, interaction: discord.Interaction):
@@ -158,12 +178,16 @@ class ScamAdmin(commands.Cog):
         honeypot_punishment = (
             await guild_settings.get_honeypot_punishment(interaction.guild.id) if interaction.guild else "ban"
         )
+        global_blacklist_enabled = (
+            await guild_settings.get_global_blacklist_enabled(interaction.guild.id) if interaction.guild else False
+        )
         description = (
             f"> **Auto-moderation:** {'ON' if enabled else 'OFF'}\n"
             f"> **Log channel:** {log_channel_text}\n"
             f"> **Scam punishment:** {PUNISHMENT_LABELS.get(punishment, punishment)}\n"
             f"> **Honeypot channel:** {honeypot_text}\n"
             f"> **Honeypot punishment:** {PUNISHMENT_LABELS.get(honeypot_punishment, honeypot_punishment)}\n"
+            f"> **Global blacklist:** {'ON' if global_blacklist_enabled else 'OFF'}\n"
             f"> **Known scam domains:** {len([l for l in domains if l.strip() and not l.startswith('#')])}\n"
             f"> **Watched names:** {len([l for l in names if l.strip() and not l.startswith('#')])}\n"
             f"> **Known scam image hashes:** {len(hashes)}"

@@ -8,6 +8,8 @@
 
 Oko watches every message and image posted in your server, catches scam giveaways and phishing links before members can click them, and removes the message — automatically, no moderator required.
 
+[github.com/totalling/oko-anti-crypto-scam-discord-bot](https://github.com/totalling/oko-anti-crypto-scam-discord-bot)
+
 </div>
 
 ---
@@ -21,6 +23,7 @@ Scammers post the same handful of tricks over and over: a compromised or fake "v
 - **Perceptual image hashing** — once one server flags an image as scam, every server running Oko recognizes near-identical reposts of it, even if it's cropped or recompressed
 - **Impersonation detection** — flags messages that pair a watched public figure/brand name with giveaway bait
 - **Honeypot channels** — an optional trap channel that punishes anyone (other than moderators) who types in it
+- **Global blacklist** — opt-in, cross-server: when Oko bans someone in one server, every other server that's enabled it punishes that same user too — immediately if they're already a member, or the moment they join
 
 ## In action
 
@@ -46,6 +49,7 @@ Every detection is logged to your mod channel with the offending message's evide
 | `/scam toggle` | Turn auto-moderation on or off for this server |
 | `/scam setlogchannel` | Set the channel scam detections get logged to |
 | `/scam setpunishment` | Choose what happens to users caught by auto-moderation — **ban**, **kick**, or **timeout** |
+| `/scam globalblacklist` | Punish members here who were banned by Oko in another server (opt-in) |
 | `/scam stats` | Show current settings and blocklist sizes |
 
 ### Honeypot (`Manage Server` required)
@@ -77,8 +81,8 @@ Every detection is logged to your mod channel with the offending message's evide
 **Requirements:** Python 3.10+, and [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) installed on the host (`brew install tesseract` on macOS, `apt install tesseract-ocr` on Debian/Ubuntu).
 
 ```bash
-git clone https://github.com/totalling/oko-anti-crypto-scam-discord-bot
-cd oko
+git clone https://github.com/totalling/oko-anti-crypto-scam-discord-bot.git
+cd oko-anti-crypto-scam-discord-bot
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt

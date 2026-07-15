@@ -111,3 +111,17 @@ async def set_honeypot_punishment(guild_id: int, punishment: str) -> None:
         entry["honeypot_punishment"] = punishment
         entry["updated_at"] = datetime.now(timezone.utc).isoformat()
         _write_store(store)
+
+
+async def get_global_blacklist_enabled(guild_id: int) -> bool:
+    store = _read_store()
+    return store.get(str(guild_id), {}).get("global_blacklist_enabled", False)
+
+
+async def set_global_blacklist_enabled(guild_id: int, enabled: bool) -> None:
+    async with _lock:
+        store = _read_store()
+        entry = store.setdefault(str(guild_id), {})
+        entry["global_blacklist_enabled"] = enabled
+        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _write_store(store)

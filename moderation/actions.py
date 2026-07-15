@@ -7,7 +7,7 @@ import discord
 import constants
 from config import Config
 from detection.pipeline import ScanResult
-from moderation import guild_settings, review_store, style
+from moderation import blacklist, guild_settings, review_store, style
 from moderation.views import ScamLogView
 
 logger = logging.getLogger("scam_bot.moderation")
@@ -98,7 +98,57 @@ async def take_action(
     if punished:
         await _post_public_gate(message, result, bot, verb)
 
+    if punished and punishment == "ban" and message.guild is not None:
+        reason = _ban_reason(result.reasons)
+        await blacklist.add(
+            message.author.id, reason=reason, source_guild_id=message.guild.id, confidence=result.confidence
+        )
+        await _propagate_global_ban(bot, message.author.id, message.guild, reason)
+
     return action
+
+
+async def log_global_blacklist_action(
+    bot: discord.Client, guild: discord.Guild, member: discord.Member, punishment: str, punished: bool, reason: str
+) -> None:
+    verb = _PUNISHMENT_VERBS.get(punishment, "banned") if punished else "flagged (missing permissions)"
+    description = (
+        f"> 🌐 **Global blacklist hit** in **{guild.name}**\n"
+        f"> **User:** {member} `{member.id}`\n"
+        f"> **Action:** {verb}\n"
+        f"> **Reason:** {reason}"
+    )
+    embed = style.build(description, timestamp=True, thumbnail_url=member.display_avatar.url)
+
+    log_channel_id = await guild_settings.get_log_channel_id(guild.id)
+    channel = guild.get_channel(log_channel_id) if log_channel_id else None
+    if channel is None:
+        channel = bot.get_channel(constants.PUBLIC_GATE_CHANNEL_ID)
+    if channel is None:
+        return
+    await channel.send(embed=embed)
+
+
+async def _propagate_global_ban(bot: discord.Client, user_id: int, source_guild: discord.Guild, reason: str) -> None:
+    for guild in bot.guilds:
+        if guild.id == source_guild.id:
+            continue
+        if not await guild_settings.get_global_blacklist_enabled(guild.id):
+            continue
+        member = guild.get_member(user_id)
+        if member is None:
+            continue
+        punishment = await guild_settings.get_punishment(guild.id)
+        full_reason = f"banned in {source_guild.name} for {reason}"
+        punished = await apply_punishment(member, punishment, reason=f"Global scam blacklist — {full_reason}"[:512])
+        await log_global_blacklist_action(bot, guild, member, punishment, punished, full_reason)
+        logger.info(
+            "Global blacklist propagation: user=%s guild=%s punishment=%s success=%s",
+            user_id,
+            guild.id,
+            punishment,
+            punished,
+        )
 
 
 async def _post_public_gate(message: discord.Message, result: ScanResult, bot: discord.Client, verb: str) -> None:
