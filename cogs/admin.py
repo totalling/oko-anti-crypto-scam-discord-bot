@@ -18,6 +18,23 @@ INVITE_URL = (
     "?client_id=1523055385190207709&permissions=8&integration_type=0&scope=bot+applications.commands"
 )
 
+BOT_AVATAR_EMOJI = "<:2c5cdb61411e80788732456a0cd8212a:1527058448125267968>"
+
+DEVELOPER_URL = "https://discord.com/users/1026824982329839707"
+
+SUPPORT_SERVER_URL = "https://discord.gg/zsNhVNAXkP"
+
+HONEYPOT_CHANNEL_NAME = "dont-type-here"
+
+PUNISHMENT_CHOICES = [
+    app_commands.Choice(name="Ban", value="ban"),
+    app_commands.Choice(name="Kick", value="kick"),
+    app_commands.Choice(name="Timeout / Mute", value="timeout"),
+]
+
+PUNISHMENT_LABELS = {"ban": "Ban", "kick": "Kick", "timeout": "Timeout / Mute"}
+PUNISHMENT_VERBS = {"ban": "banned", "kick": "kicked", "timeout": "timed out / muted"}
+
 
 def is_bot_owner():
     async def predicate(interaction: discord.Interaction) -> bool:
@@ -113,6 +130,19 @@ class ScamAdmin(commands.Cog):
         )
         await interaction.response.send_message(embed=style.command_reply(interaction, msg), ephemeral=True)
 
+    @scam_group.command(name="setpunishment", description="Choose what happens to users caught by scam auto-moderation")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.choices(punishment=PUNISHMENT_CHOICES)
+    @app_commands.describe(punishment="What to do to a user caught by auto-moderation (scam links/images/messages)")
+    async def set_punishment(self, interaction: discord.Interaction, punishment: app_commands.Choice[str]):
+        if interaction.guild is None:
+            return await interaction.response.send_message(
+                embed=style.command_reply(interaction, "This only works in a server.", emoji="❌"), ephemeral=True
+            )
+        await guild_settings.set_punishment(interaction.guild.id, punishment.value)
+        msg = f"Scam auto-moderation punishment for this server is now **{punishment.name}**."
+        await interaction.response.send_message(embed=style.command_reply(interaction, msg), ephemeral=True)
+
     @scam_group.command(name="stats", description="Show scam-detection blocklist sizes and this server's settings")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def stats(self, interaction: discord.Interaction):
@@ -122,14 +152,119 @@ class ScamAdmin(commands.Cog):
         enabled = await guild_settings.is_enabled(interaction.guild.id) if interaction.guild else True
         log_channel_id = await guild_settings.get_log_channel_id(interaction.guild.id) if interaction.guild else None
         log_channel_text = f"<#{log_channel_id}>" if log_channel_id else "not set — run `/scam setlogchannel`"
+        punishment = await guild_settings.get_punishment(interaction.guild.id) if interaction.guild else "ban"
+        honeypot_id = await guild_settings.get_honeypot_channel_id(interaction.guild.id) if interaction.guild else None
+        honeypot_text = f"<#{honeypot_id}>" if honeypot_id else "not set — run `/scam honeypot setup`"
+        honeypot_punishment = (
+            await guild_settings.get_honeypot_punishment(interaction.guild.id) if interaction.guild else "ban"
+        )
         description = (
             f"> **Auto-moderation:** {'ON' if enabled else 'OFF'}\n"
             f"> **Log channel:** {log_channel_text}\n"
+            f"> **Scam punishment:** {PUNISHMENT_LABELS.get(punishment, punishment)}\n"
+            f"> **Honeypot channel:** {honeypot_text}\n"
+            f"> **Honeypot punishment:** {PUNISHMENT_LABELS.get(honeypot_punishment, honeypot_punishment)}\n"
             f"> **Known scam domains:** {len([l for l in domains if l.strip() and not l.startswith('#')])}\n"
             f"> **Watched names:** {len([l for l in names if l.strip() and not l.startswith('#')])}\n"
             f"> **Known scam image hashes:** {len(hashes)}"
         )
         await interaction.response.send_message(embed=style.build(description), ephemeral=True)
+
+    honeypot_group = app_commands.Group(
+        name="honeypot",
+        description="Configure a honeypot trap channel for scammers/bots",
+        parent=scam_group,
+    )
+
+    @honeypot_group.command(name="setup", description="Create a trap channel — anyone who types in it is punished")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def honeypot_setup(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        if guild is None:
+            return await interaction.response.send_message(
+                embed=style.command_reply(interaction, "This only works in a server.", emoji="❌"), ephemeral=True
+            )
+
+        existing_id = await guild_settings.get_honeypot_channel_id(guild.id)
+        if existing_id and guild.get_channel(existing_id):
+            msg = f"A honeypot channel is already set up: <#{existing_id}>."
+            return await interaction.response.send_message(
+                embed=style.command_reply(interaction, msg, emoji="⚠️"), ephemeral=True
+            )
+
+        if not guild.me.guild_permissions.manage_channels:
+            msg = "I need the **Manage Channels** permission to set up a honeypot."
+            return await interaction.response.send_message(
+                embed=style.command_reply(interaction, msg, emoji="❌"), ephemeral=True
+            )
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            guild.me: discord.PermissionOverwrite(
+                view_channel=True, send_messages=True, manage_channels=True, manage_messages=True
+            ),
+        }
+        try:
+            channel = await guild.create_text_channel(
+                HONEYPOT_CHANNEL_NAME,
+                overwrites=overwrites,
+                topic="🚨 Do NOT send a message in this channel — it's a trap. You will be punished.",
+                reason=f"Honeypot setup by {interaction.user}",
+            )
+        except discord.Forbidden:
+            msg = "I don't have permission to create channels in this server."
+            return await interaction.response.send_message(
+                embed=style.command_reply(interaction, msg, emoji="❌"), ephemeral=True
+            )
+
+        await guild_settings.set_honeypot_channel_id(guild.id, channel.id)
+        punishment = await guild_settings.get_honeypot_punishment(guild.id)
+        msg = (
+            f"Honeypot channel created: {channel.mention}. Anyone who types there "
+            f"(other than moderators) will be **{PUNISHMENT_VERBS.get(punishment, punishment)}**. "
+            f"Change the honeypot punishment with `/scam honeypot setpunishment`."
+        )
+        await interaction.response.send_message(embed=style.command_reply(interaction, msg), ephemeral=True)
+
+    @honeypot_group.command(name="setpunishment", description="Choose what happens to users who trigger the honeypot")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.choices(punishment=PUNISHMENT_CHOICES)
+    @app_commands.describe(punishment="What to do to a user who types in the honeypot channel")
+    async def honeypot_set_punishment(self, interaction: discord.Interaction, punishment: app_commands.Choice[str]):
+        if interaction.guild is None:
+            return await interaction.response.send_message(
+                embed=style.command_reply(interaction, "This only works in a server.", emoji="❌"), ephemeral=True
+            )
+        await guild_settings.set_honeypot_punishment(interaction.guild.id, punishment.value)
+        msg = f"Honeypot punishment for this server is now **{punishment.name}**."
+        await interaction.response.send_message(embed=style.command_reply(interaction, msg), ephemeral=True)
+
+    @honeypot_group.command(name="disable", description="Remove the honeypot trap channel")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def honeypot_disable(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        if guild is None:
+            return await interaction.response.send_message(
+                embed=style.command_reply(interaction, "This only works in a server.", emoji="❌"), ephemeral=True
+            )
+
+        channel_id = await guild_settings.get_honeypot_channel_id(guild.id)
+        if not channel_id:
+            msg = "No honeypot channel is set up."
+            return await interaction.response.send_message(
+                embed=style.command_reply(interaction, msg, emoji="⚠️"), ephemeral=True
+            )
+
+        channel = guild.get_channel(channel_id)
+        if channel:
+            try:
+                await channel.delete(reason=f"Honeypot disabled by {interaction.user}")
+            except discord.Forbidden:
+                pass
+        await guild_settings.set_honeypot_channel_id(guild.id, None)
+        await interaction.response.send_message(
+            embed=style.command_reply(interaction, "Honeypot channel removed."), ephemeral=True
+        )
 
     @app_commands.command(name="invite", description="Get an invite link to add this bot to your server")
     async def invite(self, interaction: discord.Interaction):
@@ -137,6 +272,38 @@ class ScamAdmin(commands.Cog):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(label="Invite bot", style=discord.ButtonStyle.link, url=INVITE_URL, emoji="➕"))
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @app_commands.command(name="support", description="Get an invite link to the support server")
+    async def support(self, interaction: discord.Interaction):
+        embed = style.command_reply(interaction, "Need help? Join the support server below.", emoji="⚙️")
+        view = discord.ui.View()
+        view.add_item(
+            discord.ui.Button(label="Support server", style=discord.ButtonStyle.link, url=SUPPORT_SERVER_URL, emoji="🔗")
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+
+    @app_commands.command(name="botinfo", description="Show information about this bot")
+    async def botinfo(self, interaction: discord.Interaction):
+        bot = self.bot
+        guild_count = len(bot.guilds)
+        member_count = sum(g.member_count or 0 for g in bot.guilds if g.member_count)
+        latency_ms = round(bot.latency * 1000)
+        ban_count = await guild_settings.get_global_ban_count()
+        description = (
+            f"### {bot.user.name}\n"
+            f"Automated crypto/giveaway scam detection for Discord.\n\n"
+            f"> **Servers:** {guild_count}\n"
+            f"> **Members protected:** {member_count:,}\n"
+            f"> **Scammers caught:** {ban_count}\n"
+            f"> **Latency:** {latency_ms}ms\n"
+            f"# **Developer:** {BOT_AVATAR_EMOJI} [medisiner](https://discord.com/users/1026824982329839707)\n\n"
+            f"Use `/support` for help or `/invite` to add me to another server."
+        )
+        embed = style.build(description, thumbnail_url=bot.user.display_avatar.url)
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(label="Invite bot", style=discord.ButtonStyle.link, url=INVITE_URL, emoji="➕"))
+        view.add_item(discord.ui.Button(label="Developer", style=discord.ButtonStyle.link, url=DEVELOPER_URL, emoji="👤"))
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
 
 async def setup(bot: commands.Bot):

@@ -1,111 +1,116 @@
+<div align="center">
+
+<img src="assets/logo.png" width="96" height="96" alt="Oko logo">
+
 # Oko
 
-A Discord bot that catches the "celebrity crypto-giveaway" scam pattern — an
-impersonated verified account, a casino promo code, and a staged
-"withdrawal success" screenshot used as proof. Detection runs entirely
-locally: perceptual-hash matching, OCR, and rule-based scoring. No paid
-vision/LLM APIs, no data ever leaves your server.
+**Automatic crypto giveaway / phishing scam detection for Discord.**
 
-## How detection works
+Oko watches every message and image posted in your server, catches scam giveaways and phishing links before members can click them, and removes the message — automatically, no moderator required.
 
-1. **Perceptual hash lookup** — every posted image is fingerprinted and
-   checked against a local library of confirmed scam images. A repost, even
-   re-compressed or resized, is caught instantly.
-2. **OCR** — local Tesseract reads any text baked into the image (promo
-   codes, "withdrawal success" banners, giveaway copy).
-3. **Rule-based scoring** — the combined message text + OCR text is scored
-   against known scam phrases, a scam-domain blocklist, a domain
-   generation-pattern regex, and a watchlist of impersonated public figures.
-4. **Self-reinforcing** — any image confirmed scam by heuristics has its
-   hash added to the library automatically, so the next repost anywhere is
-   caught by hash match alone.
+</div>
 
-Above a confidence threshold, the message is deleted and the author banned;
-everything is logged with full evidence to a channel you choose.
+---
+
+## What it catches
+
+Scammers post the same handful of tricks over and over: a compromised or fake "verified" account announces a crypto giveaway, links a lookalike domain, and pressures people to act fast before the post is "deleted." Oko is built to catch exactly that pattern.
+
+- **Text scans** — giveaway language, promo/bonus codes, urgency phrases ("only the fastest," "post will be deleted"), and known scam domains
+- **Image scans (OCR)** — scam text baked into a screenshot is extracted and scanned the same way plain text is
+- **Perceptual image hashing** — once one server flags an image as scam, every server running Oko recognizes near-identical reposts of it, even if it's cropped or recompressed
+- **Impersonation detection** — flags messages that pair a watched public figure/brand name with giveaway bait
+- **Honeypot channels** — an optional trap channel that punishes anyone (other than moderators) who types in it
+
+## In action
+
+<table>
+<tr>
+<td width="50%"><img src="assets/screenshot-1.png" alt="Oko timing out a scammer" width="100%"></td>
+<td width="50%"><img src="assets/screenshot-2.png" alt="Oko banning a scammer" width="100%"></td>
+</tr>
+<tr>
+<td align="center"><sub>Low-signal message → timed out</sub></td>
+<td align="center"><sub>High-confidence scam (8 signals) → banned</sub></td>
+</tr>
+</table>
+
+Every detection is logged to your mod channel with the offending message's evidence, a confidence score, and a **Details** button moderators can use to review exactly what was flagged.
+
+## Commands
+
+### Setup & configuration (`Manage Server` required)
+
+| Command | Description |
+|---|---|
+| `/scam toggle` | Turn auto-moderation on or off for this server |
+| `/scam setlogchannel` | Set the channel scam detections get logged to |
+| `/scam setpunishment` | Choose what happens to users caught by auto-moderation — **ban**, **kick**, or **timeout** |
+| `/scam stats` | Show current settings and blocklist sizes |
+
+### Honeypot (`Manage Server` required)
+
+| Command | Description |
+|---|---|
+| `/scam honeypot setup` | Create a trap channel — anyone who types in it (except mods) is punished |
+| `/scam honeypot setpunishment` | Choose the punishment for honeypot triggers, independent of the main scam punishment |
+| `/scam honeypot disable` | Remove the honeypot channel |
+
+### General
+
+| Command | Description |
+|---|---|
+| `/invite` | Get an invite link to add Oko to another server |
+| `/support` | Get an invite to the support server |
+| `/botinfo` | Bot stats — servers, members protected, scammers caught |
+| **Mark as Known Scam** *(message context menu)* | Manually blacklist a message's author and learn its image hash |
+
+### Bot owner only
+
+| Command | Description |
+|---|---|
+| `/scam adddomain` / `removedomain` | Manage the global scam-domain blocklist |
+| `/scam addname` | Add a name to the impersonation watchlist |
 
 ## Setup
 
-### 1. Install Tesseract OCR
-
-- **Windows**: [UB-Mannheim build](https://github.com/UB-Mannheim/tesseract/wiki), or `winget install --id UB-Mannheim.TesseractOCR -e`
-- **Linux**: `sudo apt install tesseract-ocr`
-
-### 2. Install Python dependencies
-
-```
-python -m venv .venv
-.venv/bin/pip install -r requirements.txt      # Linux/macOS
-.venv\Scripts\pip install -r requirements.txt  # Windows
-```
-
-### 3. Create the Discord bot
-
-1. [Discord Developer Portal](https://discord.com/developers/applications) → New Application → Bot → Reset Token.
-2. Enable **Message Content Intent** and **Server Members Intent** under Privileged Gateway Intents.
-3. OAuth2 → URL Generator → scopes `bot`, `applications.commands`; permissions: Manage Messages, Ban Members, Read Message History, View Channels, Send Messages, Attach Files.
-4. Invite the bot with the generated URL.
-
-### 4. Configure
-
-```
-cp .env.example .env
-```
-
-Fill in `DISCORD_TOKEN`. `TESSERACT_CMD` only needs a value on Windows if
-`tesseract` isn't on `PATH`.
-
-### 5. Run
-
-```
-python main.py
-```
-
-## Deploying to a VPS
-
-See [deploy/oko.service](deploy/oko.service) for a systemd unit. Broad
-strokes: copy the repo to `/opt/oko`, set up the venv there, install
-Tesseract, fill in `.env`, then:
+**Requirements:** Python 3.10+, and [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) installed on the host (`brew install tesseract` on macOS, `apt install tesseract-ocr` on Debian/Ubuntu).
 
 ```bash
-sudo useradd -r -s /usr/sbin/nologin oko
-sudo chown -R oko:oko /opt/oko
-sudo cp deploy/oko.service /etc/systemd/system/oko.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now oko
+git clone <your-repo-url>
+cd oko
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-`sudo systemctl status oko` / `journalctl -u oko -f` to check on it.
+Create a `.env` file:
 
-## Slash commands
+```env
+DISCORD_TOKEN=your-bot-token
+TESSERACT_CMD=/opt/homebrew/bin/tesseract   # path to the tesseract binary
 
-- `/scam adddomain <domain>` — bot owner only. Add a domain to the shared blocklist.
-- `/scam removedomain <domain>` — bot owner only.
-- `/scam addname <name>` — bot owner only. Add a public figure/brand to the impersonation watchlist.
-- `/scam toggle <enabled>` — per-server, Manage Server permission. Turn detection on/off.
-- `/scam setlogchannel [channel]` — per-server, Manage Server permission. Where detections get logged.
-- `/scam stats` — per-server, Manage Server permission. Blocklist sizes and current settings.
-- `/invite` — get an invite link.
-- Right-click a message → **Mark as Known Scam** — deletes it, bans the author, and teaches the bot that image.
+# Scoring thresholds (0.0 - 1.0)
+HEURISTIC_AUTO_SCAM_SCORE=0.6
+CONFIDENCE_BAN_THRESHOLD=0.6
+HASH_DISTANCE_THRESHOLD=8
+```
 
-Domain/name-list commands are bot-owner-only because those lists are shared
-across every server the bot is in — one server's admin shouldn't be able to
-change what every other server blocks.
+Run it:
 
-## Optional: welcome message + public scam-gate feed
+```bash
+python3 main.py
+```
 
-`cogs/welcome.py` and the public "scam gate" feed in `moderation/actions.py`
-are wired to one specific server via the IDs in `constants.py`. If you're
-running your own instance, either edit those IDs to your own server/channels
-or remove the calls to `_post_public_gate` / disable the `cogs.welcome`
-extension in `main.py` if you don't want either feature.
+### Running as a service
 
-## Tuning
+A sample `systemd` unit is included at [`deploy/oko.service`](deploy/oko.service) for running Oko persistently on a Linux host.
 
-In `.env`:
-- `HEURISTIC_AUTO_SCAM_SCORE` (default `0.6`) — score needed to treat something as a confirmed scam.
-- `CONFIDENCE_BAN_THRESHOLD` (default `0.6`) — confidence needed to ban, not just delete.
-- `HASH_DISTANCE_THRESHOLD` (default `8`) — how visually similar an image must be to a known scam image to count as a match.
+## Project structure
 
-## License
-
-MIT — see [LICENSE](LICENSE).
+```
+cogs/           Discord command groups & event listeners
+detection/      Scam scoring — heuristics, OCR, perceptual image hashing
+moderation/     Punishment actions, per-guild settings, mod-log UI
+data/           Blocklists and persisted state (scam domains, watched names, guild settings)
+```

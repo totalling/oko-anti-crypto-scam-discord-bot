@@ -1,0 +1,16 @@
+[0;1;32m●[0m oko.service - Oko Discord scam-detection bot
+     Loaded: loaded (/etc/systemd/system/oko.service; enabled; vendor preset: enabled)
+     Active: [0;1;32mactive (running)[0m since Sat 2026-07-04 22:48:41 BST; 7s ago
+   Main PID: 339297 (python)
+      Tasks: 4 (limit: 7013)
+     Memory: 34.8M
+        CPU: 240ms
+     CGroup: /system.slice/oko.service
+             └─339297 /opt/oko/.venv/bin/python main.py
+
+Jul 04 22:48:41 lovely systemd[1]: Started Oko Discord scam-detection bot.
+Jul 04 22:48:41 lovely python[339297]: 2026-07-04 22:48:41,726 WARNING discord.client: PyNaCl is not installed, voice will NOT be supported
+Jul 04 22:48:41 lovely python[339297]: 2026-07-04 22:48:41,726 WARNING discord.client: davey is not installed, voice will NOT be supported
+Jul 04 22:48:41 lovely python[339297]: 2026-07-04 22:48:41,727 INFO discord.client: logging in using static token
+Jul 04 22:48:42 lovely python[339297]: 2026-07-04 22:48:42,684 INFO discord.gateway: Shard ID None has connected to Gateway (Session ID: 025f9f31dde410017c9a48d986abdae7).
+Jul 04 22:48:44 lovely python[339297]: 2026-07-04 22:48:44,709 INFO scam_bot: Logged in as Oko#5608 (id=1523055385190207709)

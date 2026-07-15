@@ -1,5 +1,6 @@
 import io
 import logging
+from datetime import timedelta
 
 import discord
 
@@ -10,6 +11,24 @@ from moderation import guild_settings, review_store, style
 from moderation.views import ScamLogView
 
 logger = logging.getLogger("scam_bot.moderation")
+
+TIMEOUT_DURATION = timedelta(days=28)
+
+_PUNISHMENT_VERBS = {"ban": "banned", "kick": "kicked", "timeout": "timed out"}
+
+
+async def apply_punishment(member: discord.Member, punishment: str, reason: str) -> bool:
+    try:
+        if punishment == "kick":
+            await member.kick(reason=reason)
+        elif punishment == "timeout":
+            await member.timeout(discord.utils.utcnow() + TIMEOUT_DURATION, reason=reason)
+        else:
+            await member.ban(reason=reason, delete_message_seconds=86400)
+        return True
+    except discord.Forbidden:
+        logger.warning("Missing permission to %s user %s", punishment, member.id)
+        return False
 
 
 def _ban_reason(reasons: list[str]) -> str:
@@ -43,7 +62,7 @@ async def take_action(
     cfg: Config,
     bot: discord.Client,
 ) -> str:
-    should_ban = result.confidence >= cfg.confidence_ban_threshold
+    should_punish = result.confidence >= cfg.confidence_ban_threshold
 
     try:
         await message.delete()
@@ -54,35 +73,35 @@ async def take_action(
     except discord.NotFound:
         deleted = True
 
-    banned = False
-    if should_ban and isinstance(message.author, discord.Member):
-        try:
-            await message.author.ban(
-                reason=f"Automated scam-giveaway detection (confidence={result.confidence:.2f})",
-                delete_message_seconds=86400,
-            )
-            banned = True
-        except discord.Forbidden:
-            logger.warning("Missing permission to ban user %s", message.author.id)
+    punished = False
+    punishment = "ban"
+    if should_punish and isinstance(message.author, discord.Member):
+        punishment = await guild_settings.get_punishment(message.guild.id) if message.guild else "ban"
+        punished = await apply_punishment(
+            message.author,
+            punishment,
+            reason=f"Automated scam-giveaway detection (confidence={result.confidence:.2f})",
+        )
 
-    if deleted and banned:
-        action = "deleted message + banned author"
+    verb = _PUNISHMENT_VERBS.get(punishment, "banned")
+    if deleted and punished:
+        action = f"deleted message + {verb} author"
     elif deleted:
         action = "deleted message"
-    elif banned:
-        action = "banned author"
+    elif punished:
+        action = f"{verb} author"
     else:
         action = "flagged only (missing permissions)"
 
     await _log_to_mod_channel(message, result, image_bytes_list, action, cfg)
 
-    if banned:
-        await _post_public_gate(message, result, bot)
+    if punished:
+        await _post_public_gate(message, result, bot, verb)
 
     return action
 
 
-async def _post_public_gate(message: discord.Message, result: ScanResult, bot: discord.Client) -> None:
+async def _post_public_gate(message: discord.Message, result: ScanResult, bot: discord.Client, verb: str) -> None:
     channel = bot.get_channel(constants.PUBLIC_GATE_CHANNEL_ID)
     if channel is None:
         return
@@ -90,7 +109,7 @@ async def _post_public_gate(message: discord.Message, result: ScanResult, bot: d
     count = await guild_settings.increment_global_ban_count()
     reason = _ban_reason(result.reasons)
     description = (
-        f"> **{message.author}** was banned for {reason}.\n"
+        f"> **{message.author}** was {verb} for {reason}.\n"
         f"> **Total scammers caught:** {count}"
     )
     embed = style.build(description, timestamp=True, thumbnail_url=message.author.display_avatar.url)

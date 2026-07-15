@@ -28,6 +28,32 @@ class Welcome(commands.Cog):
         embed = style.build(description, thumbnail_url=member.display_avatar.url)
         await channel.send(content=member.mention, embed=embed)
 
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild):
+        channel = guild.system_channel
+        if channel is None or not channel.permissions_for(guild.me).send_messages:
+            channel = next(
+                (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None
+            )
+        if channel is None:
+            return
+
+        description = (
+            "👋 **Thanks for adding me!**\n\n"
+            "I automatically detect and remove crypto/giveaway scam messages.\n\n"
+            "**Get started:**\n"
+            "> `/scam setlogchannel` — set where detections get logged\n"
+            "> `/scam toggle` — turn auto-moderation on/off (on by default)\n"
+            "> `/scam setpunishment` — choose ban, kick, or timeout for scammers\n"
+            "> `/scam honeypot setup` — set up a trap channel for scammers\n"
+            "> `/support` — get help in the support server"
+        )
+        embed = style.build(description, thumbnail_url=guild.me.display_avatar.url)
+        try:
+            await channel.send(embed=embed)
+        except discord.Forbidden:
+            pass
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Welcome(bot))
